@@ -1,0 +1,37 @@
+{
+  "reports": [
+    {
+      "week": 13,
+      "contractorWeek": 4,
+      "date": "",
+      "actual": 6.225,
+      "plan": 9.469,
+      "reportedDeviation": -3.243,
+      "source": "Catatan rapat mingguan MK 13 / kontraktor 4",
+      "summary": "Pekerjaan fondasi PF1, PF2, dan PF3 menjadi penyebab utama ketertinggalan. Klarifikasi kondisi pile cap eksisting dibutuhkan untuk melanjutkan pembersihan dan pengecoran. Dimensi bukaan lift juga sedang dikoordinasikan dengan PT KONE.",
+      "issues": [
+        {
+          "title": "Fondasi PF1, PF2, dan PF3",
+          "category": "Struktur",
+          "status": "Menunggu arahan perencana",
+          "detail": "Kondisi pile cap eksisting berbeda dari gambar perencanaan. Perencana perlu memberikan arahan teknis untuk kelanjutan pekerjaan fondasi.",
+          "pic": "Perencana dan tim MK"
+        },
+        {
+          "title": "Kesesuaian kolom dan balok",
+          "category": "Koordinasi",
+          "status": "Menunggu klarifikasi",
+          "detail": "Dimensi penampang kolom dan balok di lapangan perlu dicocokkan dengan gambar. Tim MK menunggu tanggapan teknis perencana.",
+          "pic": "Perencana dan tim MK"
+        },
+        {
+          "title": "Kehadiran QC kontraktor",
+          "category": "Mutu",
+          "status": "Perlu tindak lanjut",
+          "detail": "Personel QC kontraktor belum berada di lokasi pada catatan lapangan terakhir. Kontraktor perlu mengonfirmasi mobilisasi dan jadwal kehadiran.",
+          "pic": "PT Catur Hagen Sentosa"
+        }
+      ]
+    }
+  ]
+}
