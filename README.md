@@ -1,5 +1,30 @@
 # SMJ Project Dashboard
 
+## Deployment VPS — smj.stratalift.co.id
+
+Implementasi VPS tersedia pada branch `codex/vps-deployment`. Backend Worker dan validasi laporan tetap dipakai melalui adapter Node.js 22, tanpa dependency npm tambahan. Data dan lampiran disimpan di `/var/lib/smj`; frontend tidak disajikan langsung dari direktori repository.
+
+Di VPS, jalankan sekali:
+
+```sh
+sudo bash /var/www/smj/deploy/install.sh
+```
+
+Script menguji aplikasi, membuat akun service `smj`, meminta password pengelola `andreas` minimal 16 karakter, mengimpor laporan dan lampiran publik dari Site lama apabila storage lokal masih kosong, memasang service systemd, serta mengaktifkan Nginx dan sertifikat Let's Encrypt. DNS A harus menunjuk ke VPS dan port 80/443 harus terbuka. Script melakukan reload Nginx setelah `nginx -t`; service SMJ direstart. Site lain tidak diubah. Grup direktori `/var/www/smj` menjadi `smj` dengan mode `0750`, pemilik tetap `andreas`.
+
+Kredensial berupa hash scrypt disimpan di `/etc/smj.env` dengan mode `0640`, bukan Git. Login melalui tombol **Kelola dashboard**. Session cookie berlaku delapan jam, `Secure`, `HttpOnly`, `SameSite=Strict`; logout mencabut session. Restart service mengakhiri semua session. Pengelola dapat logout melalui `/signout-with-chatgpt`. Daftar editor email Worker lama hanya menerima identitas internal yang disuntikkan adapter setelah login; header identitas dari internet dibuang.
+
+```sh
+sudo systemctl status smj --no-pager
+sudo journalctl -u smj -n 50 --no-pager
+curl --fail https://smj.stratalift.co.id/api/reports
+sudo certbot renew --dry-run
+```
+
+Pembaruan kode: build dan jalankan `node scripts/vps-test.mjs`, lalu `sudo systemctl restart smj`. Adapter storage mendukung **satu proses Node**; jangan memakai cluster atau beberapa instance pada storage yang sama. Penulisan laporan atomik menggunakan ETag; riwayat versi sebelumnya tersedia di `/var/lib/smj/history`. Riwayat ini belum menggantikan backup ke lokasi lain. Backup seluruh `/var/lib/smj` secara terjadwal ke storage terpisah; sertakan `/etc/smj.env` dengan akses terbatas. Lampiran yang dilepas dari laporan tetap disimpan, sehingga penggunaan disk perlu dipantau.
+
+Impor awal merupakan salinan satu kali. Setelah domain VPS aktif, gunakan domain VPS untuk mengedit agar data tidak berbeda dengan Site lama. Jangan menghapus Site atau storage R2 lama sebelum laporan dan lampiran hasil impor diverifikasi.
+
 Dashboard monitoring proyek **Perkuatan Bangunan Kantor SMJ Medan** untuk Sumber Mitra Jaya dan Stratalift Solutions.
 
 **Dashboard aktif:** https://smj-medan-project-monitor.strataliftsolutions.chatgpt.site/
