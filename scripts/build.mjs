@@ -2,7 +2,8 @@ import {readFile, writeFile, mkdir, copyFile} from "node:fs/promises";
 const assets = {};
 for (const [route,file,type] of [
  ["/","web/index.html","text/html; charset=utf-8"], ["/app.js","web/app.js","application/javascript; charset=utf-8"],
- ["/editor.js","web/editor.js","application/javascript; charset=utf-8"], ["/style.css","web/style.css","text/css; charset=utf-8"], ["/icon.svg","assets/icon.svg","image/svg+xml"],
+ ["/editor.js","web/editor.js","application/javascript; charset=utf-8"], ["/documents.js","web/documents.js","application/javascript; charset=utf-8"], ["/style.css","web/style.css","text/css; charset=utf-8"], ["/icon.svg","assets/icon.svg","image/svg+xml"],
+ ["/favicon.svg","assets/favicon.svg","image/svg+xml"], ["/favicon.ico","assets/favicon.ico","image/x-icon"], ["/favicon-32.png","assets/favicon-32.png","image/png"], ["/apple-touch-icon.png","assets/apple-touch-icon.png","image/png"],
  ["/office-blueprint.jpg","assets/office-blueprint.jpg","image/jpeg"],
  ["/logo-smj-stratalift-v2.jpeg","assets/logo-smj-stratalift-v2.jpeg","image/jpeg"],
  ["/logo-smj.png","assets/logo-smj.png","image/png"], ["/logo-stratalift.png","assets/logo-stratalift.png","image/png"],
@@ -15,7 +16,7 @@ for (const [route,file,type] of [
 }
 const seed=JSON.parse(await readFile("seed.json","utf8"));
 const baseline=JSON.parse(await readFile("baseline.json","utf8"));
-const api=await readFile("worker/handler.mjs","utf8");
+const api=await readFile("worker/documents.mjs","utf8")+"\n"+await readFile("worker/handler.mjs","utf8");
 await mkdir("dist/server",{recursive:true});
 await mkdir("dist/.openai",{recursive:true});
 await writeFile("dist/server/index.js","const assets = "+JSON.stringify(assets)+";\nconst seed = "+JSON.stringify(seed)+";\nconst baseline = "+JSON.stringify(baseline)+";\n"+api);

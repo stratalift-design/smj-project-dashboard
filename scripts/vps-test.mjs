@@ -1,0 +1,130 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { scryptSync, randomBytes } from 'node:crypto';
+import { createApp, diskBucket } from './vps-server.mjs';
+
+const root = await mkdtemp(join(tmpdir(), 'smj-test-'));
+const salt = randomBytes(16).toString('hex'), password = randomBytes(4).toString('hex');
+const server = createApp({ origin: 'https://smj.stratalift.co.id', dataDir: root, username: 'admin', passwordHash: salt + ':' + scryptSync(password, salt, 64).toString('hex') });
+await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+const local = 'http://127.0.0.1:' + server.address().port;
+const origin = 'https://smj.stratalift.co.id';
+const request = (path, options = {}) => fetch(local + path, { redirect: 'manual', ...options });
+try {
+  const bucket = diskBucket(root);
+  await assert.rejects(() => bucket.get('../escape'), /Invalid storage key/);
+  const home = await request('/');
+  assert.equal(home.status, 200);
+  assert.ok((await home.text()).includes('/favicon.svg?v=3'));
+  for (const [path, type] of [['/favicon.svg?v=3', 'image/svg+xml'], ['/favicon.ico', 'image/x-icon'], ['/favicon-32.png?v=3', 'image/png'], ['/apple-touch-icon.png?v=3', 'image/png']]) {
+    const icon = await request(path);
+    assert.equal(icon.status, 200);
+    assert.equal(icon.headers.get('content-type'), type);
+    assert.ok((await icon.arrayBuffer()).byteLength > 100);
+  }
+  assert.equal((await request('/.env')).status, 404);
+  const loginPage = await request('/signin-with-chatgpt');
+  assert.equal(loginPage.status, 200);
+  const loginHTML = await loginPage.text();
+  for (const fragment of ['class="login-page"', 'class="login-card"', 'for="username"', 'for="password"', 'autocomplete="current-password"', 'id="show-password"', 'Masuk ke dashboard']) assert.ok(loginHTML.includes(fragment));
+  let data = await (await request('/api/reports', { headers: { 'oai-authenticated-user-id': 'forged', 'oai-authenticated-user-email': 'strataliftsolutions@gmail.com' } })).json();
+  assert.equal(data.canEdit, false);
+  assert.equal((await request('/api/reports', { method: 'POST', headers: { Origin: origin }, body: '{}' })).status, 403);
+  assert.equal((await request('/signin-with-chatgpt', { method: 'POST', body: 'username=admin' })).status, 403);
+  assert.equal((await request('/signin-with-chatgpt', { method: 'POST', headers: { Origin: origin }, body: 'username=admin&password=wrong' })).status, 401);
+  const login = await request('/signin-with-chatgpt', { method: 'POST', headers: { Origin: origin }, body: new URLSearchParams({ username: 'admin', password }) });
+  assert.equal(login.status, 303);
+  const setCookie = login.headers.get('set-cookie'), cookie = setCookie.split(';')[0];
+  for (const flag of ['Secure', 'HttpOnly', 'SameSite=Strict', 'Path=/']) assert.ok(setCookie.includes(flag));
+  const headers = { Origin: origin, Cookie: cookie, 'Content-Type': 'application/json' };
+  data = await (await request('/api/reports', { headers })).json();
+  assert.equal(data.canEdit, true);
+  assert.equal((await request('/api/reports', { headers: { Cookie: cookie + 'forged' } })).status, 200);
+  assert.equal((await (await request('/api/reports', { headers: { Cookie: cookie + 'forged' } })).json()).canEdit, false);
+  assert.equal((await request('/api/reports', { method: 'POST', headers: { ...headers, Origin: 'https://attacker.example' }, body: '{}' })).status, 403);
+  const oversized = await request('/api/reports', { method: 'POST', headers, body: 'x'.repeat(200001) });
+  assert.equal(oversized.status, 413);
+  const pdf = await request('/api/upload', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/pdf' }, body: '%PDF-1.4\nSMJ check' });
+  assert.equal(pdf.status, 201);
+  const { id } = await pdf.json();
+  assert.equal((await request('/media/' + id)).status, 404);
+  assert.equal((await request('/media/' + id, { headers })).status, 200);
+  assert.equal((await request('/api/upload', { method: 'POST', headers: { ...headers, 'Content-Type': 'image/png' }, body: 'not-a-png' })).status, 422);
+  const report = { ...data.reports[0], photos: [], offDays: [], pdf: id, summary: 'VPS integration check' };
+  const publish = () => request('/api/reports', { method: 'POST', headers, body: JSON.stringify({ version: data.version, mode: 'edit', report }) });
+  const concurrent = await Promise.all([publish(), publish()]);
+  assert.deepEqual(concurrent.map(r => r.status).sort(), [200, 409]);
+  let published = await (await request('/api/reports')).json();
+  assert.equal(published.reports[0].summary, report.summary);
+  assert.equal((await request('/media/' + id)).status, 200);
+  const before = await readFile(join(root, 'published/project-reports.json'));
+  const save = await request('/api/reports', { method: 'POST', headers, body: JSON.stringify({ version: published.version, mode: 'edit', report: { ...report, summary: 'Second revision' } }) });
+  assert.equal(save.status, 200);
+  const { readdir } = await import('node:fs/promises');
+  const history = await readdir(join(root, 'history'));
+  assert.equal(history.length, 1);
+  assert.deepEqual(await readFile(join(root, 'history', history[0])), before);
+  const restored = diskBucket(root);
+  assert.equal((await (await restored.get('published/project-reports.json')).json()).reports[0].summary, 'Second revision');
+  const documentHeaders = { Origin: origin, Cookie: cookie };
+  const documents = await (await request('/api/documents')).json();
+  assert.deepEqual(documents.documents, []);
+  assert.equal(documents.canEdit, false);
+  assert.equal((await request('/api/documents', { method: 'POST', headers: { Origin: origin }, body: 'forged' })).status, 403);
+  assert.equal((await request('/api/documents', { method: 'POST', headers: { ...documentHeaders, Origin: 'https://attacker.example' }, body: 'forged' })).status, 403);
+  function documentForm(name = 'laporan.pdf', content = '%PDF-1.4\nSMJ document check') {
+    const form = new FormData();
+    for (const [key, value] of Object.entries({ title: 'Laporan assessment struktur', revision: '02', date: '2026-11-26', description: 'Arsip umum proyek' })) form.set(key, value);
+    form.set('file', new Blob([content]), name);
+    return form;
+  }
+  const uploadDocument = body => request('/api/documents', { method: 'POST', headers: documentHeaders, body });
+  assert.equal((await uploadDocument(documentForm('script.html'))).status, 415);
+  assert.equal((await uploadDocument(documentForm('fake.pdf', 'not a PDF'))).status, 422);
+  assert.equal((await uploadDocument(documentForm('fake.docx', 'PK fake zip'))).status, 422);
+  assert.equal((await uploadDocument(documentForm('empty.pdf', ''))).status, 413);
+  const invalidDate = documentForm(); invalidDate.set('date', '2026-02-31');
+  assert.equal((await uploadDocument(invalidDate)).status, 422);
+  const oversizedDocument = documentForm('large.pdf', 'x'.repeat(10 * 1024 * 1024 + 1));
+  assert.equal((await uploadDocument(oversizedDocument)).status, 413);
+  const saved = await uploadDocument(documentForm('laporan ü.pdf'));
+  assert.equal(saved.status, 201);
+  const publishedDocument = (await saved.json()).document;
+  const publicDocument = await request('/documents/' + publishedDocument.id);
+  assert.equal(publicDocument.status, 200);
+  assert.ok(publicDocument.headers.get('content-disposition').startsWith('inline;'));
+  assert.equal(await publicDocument.text(), '%PDF-1.4\nSMJ document check');
+  const downloadDocument = await request('/documents/' + publishedDocument.id + '?download=1');
+  assert.ok(downloadDocument.headers.get('content-disposition').startsWith('attachment;'));
+  assert.ok(downloadDocument.headers.get('content-disposition').includes('%C3%BC'));
+  assert.equal((await request('/documents/' + publishedDocument.id, { method: 'HEAD' })).status, 200);
+  assert.equal((await request('/documents/00000000-0000-0000-0000-000000000000.pdf')).status, 404);
+  const parallelDocuments = await Promise.all([uploadDocument(documentForm()), uploadDocument(documentForm())]);
+  assert.deepEqual(parallelDocuments.map(r => r.status), [201, 201]);
+  assert.equal((await (await request('/api/documents')).json()).documents.length, 3);
+  assert.equal((await (await diskBucket(root).get('published/project-documents.json')).json()).documents.length, 3);
+  const officeFixtures = {"docx": "UEsDBBQAAAAIAEa1el2sbhJangAAANwAAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbF2PsQ7CMBBDf6XKitqrGBhQ24UdGPiBU3JtI5pLlBwF/p4EpA6Mlu1nubu9A6Xq5RZOvZpFwhEg6ZkcpsYH4uyMPjqULOMEAfUdJ4J92x5AexZiqaUw1NBdVorRGqquGOWMjnoFTx8NGK8fLiebTFPV6Vcry73CEBarUaxnWNn8bdZ+HK2mrV9oIXpNKVme3NJsjkPLu4KHoYPvqeEDUEsDBBQAAAAIAEa1el0DUd6DeQAAAJsAAAARAAAAd29yZC9kb2N1bWVudC54bWxFzjEOwjAMBdCrVD0ArhgYopADIDFxgpCEtqKOI9socHuSMrA86+vLlm01kcILU9bhjVsWU8/joloMgIQloZcDlZRb9yBGry3yDJU4FqaQRNY84wbHaToB+jWPzlZzp/jps3S4o+52vQztYHha6LHLu2X3twL/d9wXUEsBAhQDFAAAAAgARrV6XaxuElqeAAAA3AAAABMAAAAAAAAAAAAAAIABAAAAAFtDb250ZW50X1R5cGVzXS54bWxQSwECFAMUAAAACABGtXpdA1Heg3kAAACbAAAAEQAAAAAAAAAAAAAAgAHPAAAAd29yZC9kb2N1bWVudC54bWxQSwUGAAAAAAIAAgCAAAAAdwEAAAAA", "xlsx": "UEsDBBQAAAAIAEa1el2U7PTVoAAAANQAAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbF2PwQ6CMBBEf4X0augSDx4McPGuHvyBtV2ggXabdkX8ewFvniaTybzJ1I9PpFwsfgq5UYNIPANkM5DHrDlSWJOOk0dZbeohohmxJzhW1QkMB6EgpWwM1da3mVJyloo7Jrmip0bBMsGb0/hkHvXKUsXlV9p2G4UxTs6gOA4wB/u3WHLXOUOWzcuvFZ1jIrR5IBI/6V21RxcOGxjaGvYz7RdQSwMEFAAAAAgARrV6XYWgN+RUAAAAYAAAAA8AAAB4bC93b3JrYm9vay54bWw1jEEKgCAQAL8SPqCVDh3C/IvVlqHrirtQzy+CjjMD4y5uaWFO3U25yGyiap0AZI1IQXquWN6yc6OgL7YDpDYMm0REpQyDtSNQOIvx7nMC3sF/9Q9QSwECFAMUAAAACABGtXpdlOz01aAAAADUAAAAEwAAAAAAAAAAAAAAgAEAAAAAW0NvbnRlbnRfVHlwZXNdLnhtbFBLAQIUAxQAAAAIAEa1el2FoDfkVAAAAGAAAAAPAAAAAAAAAAAAAACAAdEAAAB4bC93b3JrYm9vay54bWxQSwUGAAAAAAIAAgB+AAAAUgEAAAAA"};
+  for (const [extension, base64] of Object.entries(officeFixtures)) {
+    const office = await uploadDocument(documentForm('Office.' + extension, Buffer.from(base64, 'base64')));
+    assert.equal(office.status, 201);
+    const id = (await office.json()).document.id;
+    assert.ok((await request('/documents/' + id)).headers.get('content-disposition').startsWith('attachment;'));
+  }
+  for (const extension of ['doc', 'xls']) {
+    const signature = Buffer.concat([Buffer.from([208, 207, 17, 224, 161, 177, 26, 225]), Buffer.from((extension === 'doc' ? 'WordDocument' : 'Workbook') + '\0', 'utf16le')]);
+    assert.equal((await uploadDocument(documentForm('Legacy.' + extension, signature))).status, 201);
+  }
+  console.log('PASS: public documents, protected upload, CSRF, formats, limits, download, concurrent uploads, persistence');
+  const logout = await request('/signout-with-chatgpt', { method: 'POST', headers });
+  assert.equal(logout.status, 303);
+  assert.ok(logout.headers.get('set-cookie').includes('Max-Age=0'));
+  assert.equal((await (await request('/api/reports', { headers })).json()).canEdit, false);
+  for (let i = 0; i < 10; i++) assert.equal((await request('/signin-with-chatgpt', { method: 'POST', headers: { Origin: origin }, body: 'username=x&password=x' })).status, 401);
+  assert.equal((await request('/signin-with-chatgpt', { method: 'POST', headers: { Origin: origin }, body: 'username=x&password=x' })).status, 429);
+  console.log('PASS: login, cookies, spoofed identity, CSRF, limits, upload, publish race, persistence, history, logout, login throttling');
+} finally {
+  await new Promise(resolve => server.close(resolve));
+  await rm(root, { recursive: true, force: true });
+}
