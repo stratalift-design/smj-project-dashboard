@@ -57,6 +57,7 @@ async function publish(req,env){
 }
 async function handle(req,env){
  const url=new URL(req.url),path=url.pathname,editor=canEdit(req);
+ if(path==="/api/documents"||path.startsWith("/documents/"))return handleDocuments(req,env,editor);
  if(path==="/api/reports"&&req.method==="GET")return json({...await current(env.BUCKET),baseline,canEdit:editor,signedIn:Boolean(req.headers.get("oai-authenticated-user-id"))});
  if((path==="/api/reports"||path==="/api/upload")&&req.method==="POST"){
   if(!editor)return fail("Login dengan akun pengelola.",403);

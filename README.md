@@ -10,7 +10,7 @@ Di VPS, jalankan sekali:
 sudo bash /var/www/smj/deploy/install.sh
 ```
 
-Script menguji aplikasi, membuat akun service `smj`, meminta password pengelola `andreas` minimal 16 karakter, mengimpor laporan dan lampiran publik dari Site lama apabila storage lokal masih kosong, memasang service systemd, serta mengaktifkan Nginx dan sertifikat Let's Encrypt. DNS A harus menunjuk ke VPS dan port 80/443 harus terbuka. Script melakukan reload Nginx setelah `nginx -t`; service SMJ direstart. Site lain tidak diubah. Grup direktori `/var/www/smj` menjadi `smj` dengan mode `0750`, pemilik tetap `andreas`.
+Script menguji aplikasi, membuat akun service `smj`, meminta password pengelola `admin` minimal 8 karakter, mengimpor laporan dan lampiran publik dari Site lama apabila storage lokal masih kosong, memasang service systemd, serta mengaktifkan Nginx dan sertifikat Let's Encrypt. DNS A harus menunjuk ke VPS dan port 80/443 harus terbuka. Script melakukan reload Nginx setelah `nginx -t`; service SMJ direstart. Site lain tidak diubah. Grup direktori `/var/www/smj` menjadi `smj` dengan mode `0750`, pemilik tetap `andreas`.
 
 Kredensial berupa hash scrypt disimpan di `/etc/smj.env` dengan mode `0640`, bukan Git. Login melalui tombol **Kelola dashboard**. Session cookie berlaku delapan jam, `Secure`, `HttpOnly`, `SameSite=Strict`; logout mencabut session. Restart service mengakhiri semua session. Pengelola dapat logout melalui `/signout-with-chatgpt`. Daftar editor email Worker lama hanya menerima identitas internal yang disuntikkan adapter setelah login; header identitas dari internet dibuang.
 
@@ -96,3 +96,13 @@ Backend diperlukan untuk penyimpanan laporan, autentikasi, dan unggahan; proyek 
 ## Aset dan font
 
 Logo SMJ–Stratalift berasal dari aset yang diberikan tim proyek. Font Poppins dan League Spartan disertakan secara lokal beserta lisensi OFL di `assets/fonts/`. Hak penggunaan logo dan materi proyek mengikuti izin pemiliknya.
+
+## Arsip dokumen proyek
+
+Tab **Dokumen** berada paling kiri pada navigasi. Arsip berlaku untuk seluruh proyek, terpisah dari minggu laporan. Semua pengunjung dapat melihat daftar serta mengunduh berkas. PDF dapat dibuka pada tab baru; berkas Office diunduh untuk dibuka dengan aplikasi yang sesuai.
+
+Pengelola login dapat mengunggah satu berkas per formulir dengan judul, revisi, tanggal dokumen, serta keterangan opsional. Format: PDF, DOC, DOCX, XLS, XLSX; maksimum 10 MB. Server memeriksa ekstensi, signature format, ukuran, origin request, dan identitas pengelola. Ini bukan pemindai antivirus; unggah hanya dokumen tepercaya.
+
+Metadata tersimpan di `/var/lib/smj/published/project-documents.json`, berkas di `/var/lib/smj/documents/`, riwayat metadata di `/var/lib/smj/history/`. Penulisan metadata menggunakan ETag dan rename atomik; hanya berkas yang tercatat pada metadata dapat diakses. Dokumen yang gagal tercatat tidak disajikan publik, tetapi dapat tetap memakai disk. Tidak ada penghapusan atau penggantian berkas; revisi baru diunggah sebagai entri baru. Backup `/var/lib/smj` mencakup arsip ini.
+
+Validasi tambahan: `node scripts/vps-test.mjs` menguji akses publik, upload berizin, format Office/PDF, batas ukuran, unduhan, persistensi, serta upload bersamaan tanpa menyentuh data produksi. Setelah build, restart service SMJ untuk memuat perubahan.

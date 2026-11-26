@@ -9,18 +9,18 @@ node scripts/validate-artifact.mjs
 node scripts/vps-test.mjs
 if ! id smj >/dev/null 2>&1; then useradd --system --user-group --home-dir /var/lib/smj --shell /usr/sbin/nologin smj; fi
 if [[ ! -f /etc/smj.env ]]; then
-    read -rsp 'Password baru pengelola andreas (minimal 16 karakter): ' smj_password
+    read -rsp 'Password baru pengelola admin (minimal 8 karakter): ' smj_password
     echo
     read -rsp 'Ulangi password: ' smj_confirmation
     echo
-    if [[ "$smj_password" != "$smj_confirmation" || ${#smj_password} -lt 16 ]]; then echo 'Password tidak sama atau terlalu pendek.'; exit 1; fi
+    if [[ "$smj_password" != "$smj_confirmation" || ${#smj_password} -lt 8 ]]; then echo 'Password tidak sama atau terlalu pendek.'; exit 1; fi
     umask 077
     printf '%s' "$smj_password" | node --input-type=module -e '
         import { scryptSync, randomBytes } from "node:crypto";
         import { readFileSync, writeFileSync } from "node:fs";
         const salt = randomBytes(16).toString("hex");
         const hash = salt + ":" + scryptSync(readFileSync(0), salt, 64).toString("hex");
-        writeFileSync("/etc/smj.env", "PUBLIC_ORIGIN=https://smj.stratalift.co.id\nDATA_DIR=/var/lib/smj\nADMIN_USERNAME=andreas\nADMIN_PASSWORD_HASH=" + hash + "\n", { mode: 0o600, flag: "wx" });
+        writeFileSync("/etc/smj.env", "PUBLIC_ORIGIN=https://smj.stratalift.co.id\nDATA_DIR=/var/lib/smj\nADMIN_USERNAME=admin\nADMIN_PASSWORD_HASH=" + hash + "\n", { mode: 0o600, flag: "wx" });
     '
     unset smj_password smj_confirmation
 fi
@@ -53,4 +53,4 @@ printf '#!/bin/sh\n/usr/sbin/nginx -t && /usr/bin/systemctl reload nginx\n' > /e
 chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/smj-reload-nginx
 systemctl enable --now certbot.timer
 curl --fail --silent --show-error https://smj.stratalift.co.id/api/reports | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d["reports"])>0; print("HTTPS dan API aktif: https://smj.stratalift.co.id")'
-echo 'Username pengelola: andreas. Password: sesuai input tadi.'
+echo 'Username pengelola: admin. Password: sesuai input tadi.'
